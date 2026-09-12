@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>演講提示卡 - 粵語進度追蹤</title>
+<title>演講提示卡 - 快速追蹤版</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -21,11 +21,8 @@
     border-radius: 8px; cursor: pointer; font-weight: bold;
   }
   #startBtn { background: #e94560; color: #fff; }
-  #stopBtn { background: #555; color: #fff; }
-  #status {
-    font-size: 14px; color: #a8dadc; flex: 1;
-    min-width: 200px;
-  }
+  #stopBtn  { background: #555; color: #fff; }
+  #status { font-size: 14px; color: #a8dadc; flex: 1; min-width: 180px; }
   #liveText {
     background: #0f3460; padding: 10px; border-radius: 8px;
     font-size: 14px; color: #ffd460; min-height: 40px;
@@ -34,11 +31,11 @@
   .sentence {
     padding: 12px 14px; margin: 6px 0; border-radius: 8px;
     font-size: 22px; line-height: 1.6; cursor: pointer;
-    background: #16213e; transition: all 0.3s;
+    background: #16213e; transition: all 0.2s;
     border-left: 4px solid transparent;
   }
   .sentence:hover { background: #1f2b47; }
-  .sentence.done { opacity: 0.4; }
+  .sentence.done { opacity: 0.35; }
   .sentence.current {
     background: #e94560; color: #fff;
     border-left-color: #ffd460;
@@ -64,13 +61,13 @@
 <div id="script"></div>
 
 <p class="hint">
-  提示：如果自動追蹤唔準，可以直接㩒任何一句手動跳過去。
+  提示：如果追蹤唔準，可以直接㩒任何一句手動跳過去。
   建議用 Chrome 或 Edge，並喺安靜環境使用。
 </p>
 
 <script>
 // ============================================================
-// 1. 講稿內容：每句一個元素，系統會逐句追蹤
+// 1. 講稿內容
 // ============================================================
 const scriptLines = [
   {type:'title', text:'2026.09.13 安得烈團事工報告'},
@@ -114,10 +111,11 @@ const scriptLines = [
 ];
 
 // ============================================================
-// 2. 將講稿渲染出嚟
+// 2. 渲染講稿
 // ============================================================
 const scriptDiv = document.getElementById('script');
 const sentenceEls = [];
+
 scriptLines.forEach((item, idx) => {
   const div = document.createElement('div');
   div.textContent = item.text;
@@ -133,43 +131,41 @@ scriptLines.forEach((item, idx) => {
 });
 
 // ============================================================
-// 3. 關鍵詞提取（用於模糊匹配）
+// 3. 預計算每句嘅關鍵詞（只用中文字，唔用二元組，更快）
 // ============================================================
-function extractKeywords(text) {
-  // 去掉標點、英文、數字，只留中文字，再切成字
-  const cleaned = text.replace(/[^\u4e00-\u9fff]/g, '');
-  // 用相鄰兩個字做「二元組」，提高匹配穩定度
-  const grams = new Set();
-  for (let i = 0; i < cleaned.length - 1; i++) {
-    grams.add(cleaned.slice(i, i + 2));
+function extractChars(text) {
+  const chars = new Set();
+  for (const ch of text) {
+    if (/[\u4e00-\u9fff]/.test(ch)) {
+      chars.add(ch);
+    }
   }
-  return grams;
+  return chars;
 }
 
-// 預先計算每句嘅關鍵詞集合
-const lineKeywords = scriptLines.map(item =>
-  item.type === 'line' ? extractKeywords(item.text) : new Set()
+const lineCharSets = scriptLines.map(item =>
+  item.type === 'line' ? extractChars(item.text) : new Set()
 );
 
 // ============================================================
-// 4. 相似度計算：識別文字 vs 某句
+// 4. 快速匹配：識別文字入面有幾多個字屬於目標句
 // ============================================================
-function similarity(recognized, targetSet) {
+function matchScore(recognized, targetSet) {
   if (targetSet.size === 0) return 0;
-  const recGrams = extractKeywords(recognized);
-  let overlap = 0;
-  recGrams.forEach(g => { if (targetSet.has(g)) overlap++; });
-  return overlap / targetSet.size;
+  let hits = 0;
+  for (const ch of recognized) {
+    if (targetSet.has(ch)) hits++;
+  }
+  return hits / targetSet.size;
 }
 
 // ============================================================
-// 5. 進度追蹤狀態
+// 5. 追蹤狀態
 // ============================================================
 let currentIdx = -1;
 
 function setCurrent(idx, manual) {
   if (idx < 0 || idx >= scriptLines.length) return;
-  // 清除舊高亮
   sentenceEls.forEach(({el}) => el.classList.remove('current'));
   currentIdx = idx;
   const target = sentenceEls.find(s => s.idx === idx);
@@ -177,50 +173,51 @@ function setCurrent(idx, manual) {
     target.el.classList.add('current');
     target.el.scrollIntoView({behavior: 'smooth', block: 'center'});
   }
-  // 標記已完成
   sentenceEls.forEach(({idx: i, el}) => {
     el.classList.toggle('done', i < idx);
   });
+  if (manual) {
+    document.getElementById('status').textContent = '✋ 手動跳轉';
+  }
 }
 
-// 搵出最匹配嘅下一句（只會向前，唔會跳返後面）
-function findNextMatch(recognized) {
-  let bestIdx = -1;
-  let bestScore = 0;
-  // 只搜索当前句之後嘅 5 句（避免亂跳）
-  const start = Math.max(0, currentIdx);
-  const end = Math.min(scriptLines.length, start + 6);
+// ============================================================
+// 6. 核心匹配邏輯：只搜接下來 4 句（覆蓋跳讀 1-2 句）
+// ============================================================
+const SEARCH_AHEAD = 4;      // 向後搜幾句
+const THRESHOLD = 0.22;      // 觸發閾值（低啲 = 快啲觸發）
+
+function tryMatch(recognized) {
+  const start = currentIdx + 1;
+  const end = Math.min(currentIdx + SEARCH_AHEAD + 1, scriptLines.length);
+
   for (let i = start; i < end; i++) {
     if (scriptLines[i].type !== 'line') continue;
-    const score = similarity(recognized, lineKeywords[i]);
-    if (score > bestScore) {
-      bestScore = score;
-      bestIdx = i;
+    const score = matchScore(recognized, lineCharSets[i]);
+    if (score >= THRESHOLD) {
+      return i;
     }
-  }
-  // 相似度要超過 35% 先算數（可調整）
-  if (bestScore >= 0.35 && bestIdx > currentIdx) {
-    return bestIdx;
   }
   return -1;
 }
 
 // ============================================================
-// 6. 語音識別（粵語）
+// 7. 語音識別
 // ============================================================
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;
 let accumulated = '';
+let isTracking = false;
 
 if (!SpeechRecognition) {
   document.getElementById('status').textContent =
-    '⚠️ 你嘅瀏覽器唔支援語音識別，請用 Chrome 或 Edge 開呢個檔案。';
+    '⚠️ 你嘅瀏覽器唔支援語音識別，請用 Chrome 或 Edge。';
   document.getElementById('startBtn').disabled = true;
 } else {
   recognition = new SpeechRecognition();
-  recognition.lang = 'zh-HK';        // 粵語
-  recognition.continuous = true;     // 持續監聽
-  recognition.interimResults = true; // 要中間結果，反應快啲
+  recognition.lang = 'zh-HK';
+  recognition.continuous = true;
+  recognition.interimResults = true;
   recognition.maxAlternatives = 1;
 
   recognition.onresult = (event) => {
@@ -233,14 +230,17 @@ if (!SpeechRecognition) {
         interim += transcript;
       }
     }
+
     const display = accumulated + interim;
     document.getElementById('liveText').textContent = '🎧 ' + display;
 
-    // 用最近嘅一截文字去匹配，唔好用全文（太慢又唔準）
-    const recent = display.slice(-60);
-    const matchIdx = findNextMatch(recent);
-    if (matchIdx !== -1) {
+    // 只取最近 30 個字做匹配（由 40 改做 30，更靈敏）
+    const recent = display.slice(-30);
+
+    const matchIdx = tryMatch(recent);
+    if (matchIdx !== -1 && matchIdx > currentIdx) {
       setCurrent(matchIdx);
+      document.getElementById('status').textContent = '✅ 追蹤中';
     }
   };
 
@@ -249,7 +249,6 @@ if (!SpeechRecognition) {
   };
 
   recognition.onend = () => {
-    // 如果仲係追蹤緊，自動重啟（因為 continuous 有時會自己停）
     if (isTracking) {
       try { recognition.start(); } catch(e) {}
     }
@@ -257,15 +256,13 @@ if (!SpeechRecognition) {
 }
 
 // ============================================================
-// 7. 開始 / 停止 按鈕
+// 8. 開始 / 停止
 // ============================================================
-let isTracking = false;
-
 document.getElementById('startBtn').addEventListener('click', () => {
   if (!recognition) return;
   isTracking = true;
   accumulated = '';
-  if (currentIdx === -1) setCurrent(0); // 由第一句開始
+  if (currentIdx === -1) setCurrent(0);
   recognition.start();
   document.getElementById('startBtn').style.display = 'none';
   document.getElementById('stopBtn').style.display = 'inline-block';
