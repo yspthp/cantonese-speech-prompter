@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>演講提示卡 - 粵語進度追蹤</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Microsoft JhengHei", "PingFang HK", sans-serif;
+    background: #1a1a2e; color: #eee; padding: 16px;
+  }
+  .controls {
+    position: sticky; top: 0; background: #16213e;
+    padding: 12px; border-radius: 10px; margin-bottom: 16px;
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    z-index: 10;
+  }
+  button {
+    padding: 10px 20px; font-size: 16px; border: none;
+    border-radius: 8px; cursor: pointer; font-weight: bold;
+  }
+  #startBtn { background: #e94560; color: #fff; }
+  #stopBtn { background: #555; color: #fff; }
+  #status {
+    font-size: 14px; color: #a8dadc; flex: 1;
+    min-width: 200px;
+  }
+  #liveText {
+    background: #0f3460; padding: 10px; border-radius: 8px;
+    font-size: 14px; color: #ffd460; min-height: 40px;
+    margin-bottom: 16px; line-height: 1.5;
+  }
+  .sentence {
+    padding: 12px 14px; margin: 6px 0; border-radius: 8px;
+    font-size: 22px; line-height: 1.6; cursor: pointer;
+    background: #16213e; transition: all 0.3s;
+    border-left: 4px solid transparent;
+  }
+  .sentence:hover { background: #1f2b47; }
+  .sentence.done { opacity: 0.4; }
+  .sentence.current {
+    background: #e94560; color: #fff;
+    border-left-color: #ffd460;
+    font-size: 26px; font-weight: bold;
+  }
+  .section-title {
+    color: #ffd460; font-size: 18px; margin: 20px 0 8px;
+    font-weight: bold;
+  }
+  .hint { font-size: 12px; color: #888; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="controls">
+  <button id="startBtn">🎤 開始追蹤</button>
+  <button id="stopBtn" style="display:none;">⏹ 停止</button>
+  <div id="status">準備就緒，撳「開始追蹤」並允許使用咪高峯。</div>
+</div>
+
+<div id="liveText">（呢度會顯示識別到嘅聲音）</div>
+
+<div id="script"></div>
+
+<p class="hint">
+  提示：如果自動追蹤唔準，可以直接㩒任何一句手動跳過去。
+  建議用 Chrome 或 Edge，並喺安靜環境使用。
+</p>
+
+<script>
+// ============================================================
+// 1. 講稿內容：每句一個元素，系統會逐句追蹤
+// ============================================================
+const scriptLines = [
+  {type:'title', text:'2026.09.13 安得烈團事工報告'},
+  {type:'line', text:'安得烈團一共有8個小組，由職青及夫婦小組組成，成員年齡橫跨三十至四十多歲。'},
+  {type:'line', text:'我們以「讓人認識和經歷福音的大能，使福音進入人的生命，令人活出有力的生命」作為共同的異象。'},
+  {type:'line', text:'藉此機會，讓我也與大家分享安得烈團現正面對的機遇和挑戰。'},
+
+  {type:'title', text:'1. 牧養挑戰與調整'},
+  {type:'line', text:'近年有越來越多肢體步入結婚、生兒育女的階段，安得烈團的發展方針也因此有所調整。'},
+  {type:'line', text:'如何在角色轉變中仍與神結連，是大家共同的功課，也是安得烈團在牧養上必須面對的挑戰。'},
+  {type:'line', text:'隨著團內育有幼兒的肢體漸多，今年我們因應日益增加的親子需要，在牧養上作出彈性安排。'},
+  {type:'line', text:'例如於5月1日舉辦的整團退修日以「Knock, Unlock」為主題，就首次加入嘗試讓小朋友一同參與退修的元素。'},
+  {type:'line', text:'讓育有幼兒的肢體有空間從繁忙的日程中靜下來參與退修。'},
+  {type:'line', text:'我們亦在暑期興趣班籌備以幼兒家庭為對象的活動，例如「幼兒Messy Play」。'},
+  {type:'line', text:'未來我們仍會繼續探索和調整策略，嘗試把福音延伸至更多背景相近的家庭，讓信仰在不同的家庭中扎根。'},
+
+  {type:'title', text:'2. 福音工作'},
+  {type:'line', text:'福音工作方面，年初，我們藉著異象分享會，以詩歌分享、遊戲、聚餐的形式，來喚起弟兄姊妹以具體行動分享福音、關懷生命的心志。'},
+  {type:'line', text:'並預告全年的福音活動，讓弟兄姊妹能夠清晰本年福音工作的方向。'},
+  {type:'line', text:'由5月開始至9月，我們以一系列的興趣班作為福音預工。'},
+  {type:'line', text:'今年的活動更多元化，涵蓋運動例如Pickle Ball、羽毛球；手工藝類例如藍曬手作；手沖咖啡；AI實戰以及親子活動等範疇。'},
+  {type:'line', text:'暫時累計有44人次參加，當中有12名新朋友。'},
+  {type:'line', text:'整團的戶外旅行過往亦是較受歡迎和較多新朋友參與的活動。'},
+  {type:'line', text:'吸取往年經驗，今年將安排在天氣較怡人的秋季，於10月1日舉辦秋季大旅行。'},
+  {type:'line', text:'緊隨其後的是我們即將於10月18日舉行的佈道會。'},
+  {type:'line', text:'過往的經驗讓我們更深體會到，單次活動不足以令福音對象信主，大型活動只是輔助，持續的邀請與跟進才是關鍵。'},
+  {type:'line', text:'盼望先前各項活動所接觸的新朋友，都能被好好跟進或參與到小組生活，讓福音的種子紮根成長。'},
+  {type:'line', text:'也請弟兄姊妹為我們禱告，求神幫助我們活出美好的生命見證，並把握每個傳福音的機會。'},
+
+  {type:'title', text:'3. 短宣'},
+  {type:'line', text:'短宣方面，感恩今年團內共有10位肢體在忙碌的日程中抽時間參與。'},
+  {type:'line', text:'當中7人前往泰國、3人到內地探訪教會，服侍當地的信徒及居民。'},
+  {type:'line', text:'願弟兄姊妹在服侍的經歷中，生命再次被造就和興起，並願這分承擔也繼續感染更多肢體，來年能夠參與短宣。'},
+
+  {type:'title', text:'結語及代禱'},
+  {type:'line', text:'最後，請大家紀念安得烈團的需要，剛才提到安得烈團的肢體正面對人生階段的變化，成長步伐不一的挑戰。'},
+  {type:'line', text:'現階段是否有肢體願意承擔組長崗位、組長能否有足夠的愛心與心力來承載組員生命，都關係到各小組未來福音事工的發展及組員們屬靈生命的成長。'},
+  {type:'line', text:'加拉太書6:2「你們各人的重擔要互相擔當，這樣就會成全基督的律法」。'},
+  {type:'line', text:'縱然牧養的職份並非每人都有心志承擔，但在愛中彼此擔當，正是我們每人當做的事。'},
+  {type:'line', text:'盼望弟兄姊妹繼續為安得烈各小組代禱，亦求天父興起大家的愛心，使更多人願意主動承載同組肢體的生命，承擔牧養的職份，讓彼此的生命能夠在基督裡扎根、一同成長。'}
+];
+
+// ============================================================
+// 2. 將講稿渲染出嚟
+// ============================================================
+const scriptDiv = document.getElementById('script');
+const sentenceEls = [];
+scriptLines.forEach((item, idx) => {
+  const div = document.createElement('div');
+  div.textContent = item.text;
+  if (item.type === 'title') {
+    div.className = 'section-title';
+  } else {
+    div.className = 'sentence';
+    div.dataset.idx = idx;
+    div.addEventListener('click', () => setCurrent(idx, true));
+    sentenceEls.push({idx, el: div});
+  }
+  scriptDiv.appendChild(div);
+});
+
+// ============================================================
+// 3. 關鍵詞提取（用於模糊匹配）
+// ============================================================
+function extractKeywords(text) {
+  // 去掉標點、英文、數字，只留中文字，再切成字
+  const cleaned = text.replace(/[^\u4e00-\u9fff]/g, '');
+  // 用相鄰兩個字做「二元組」，提高匹配穩定度
+  const grams = new Set();
+  for (let i = 0; i < cleaned.length - 1; i++) {
+    grams.add(cleaned.slice(i, i + 2));
+  }
+  return grams;
+}
+
+// 預先計算每句嘅關鍵詞集合
+const lineKeywords = scriptLines.map(item =>
+  item.type === 'line' ? extractKeywords(item.text) : new Set()
+);
+
+// ============================================================
+// 4. 相似度計算：識別文字 vs 某句
+// ============================================================
+function similarity(recognized, targetSet) {
+  if (targetSet.size === 0) return 0;
+  const recGrams = extractKeywords(recognized);
+  let overlap = 0;
+  recGrams.forEach(g => { if (targetSet.has(g)) overlap++; });
+  return overlap / targetSet.size;
+}
+
+// ============================================================
+// 5. 進度追蹤狀態
+// ============================================================
+let currentIdx = -1;
+
+function setCurrent(idx, manual) {
+  if (idx < 0 || idx >= scriptLines.length) return;
+  // 清除舊高亮
+  sentenceEls.forEach(({el}) => el.classList.remove('current'));
+  currentIdx = idx;
+  const target = sentenceEls.find(s => s.idx === idx);
+  if (target) {
+    target.el.classList.add('current');
+    target.el.scrollIntoView({behavior: 'smooth', block: 'center'});
+  }
+  // 標記已完成
+  sentenceEls.forEach(({idx: i, el}) => {
+    el.classList.toggle('done', i < idx);
+  });
+}
+
+// 搵出最匹配嘅下一句（只會向前，唔會跳返後面）
+function findNextMatch(recognized) {
+  let bestIdx = -1;
+  let bestScore = 0;
+  // 只搜索当前句之後嘅 5 句（避免亂跳）
+  const start = Math.max(0, currentIdx);
+  const end = Math.min(scriptLines.length, start + 6);
+  for (let i = start; i < end; i++) {
+    if (scriptLines[i].type !== 'line') continue;
+    const score = similarity(recognized, lineKeywords[i]);
+    if (score > bestScore) {
+      bestScore = score;
+      bestIdx = i;
+    }
+  }
+  // 相似度要超過 35% 先算數（可調整）
+  if (bestScore >= 0.35 && bestIdx > currentIdx) {
+    return bestIdx;
+  }
+  return -1;
+}
+
+// ============================================================
+// 6. 語音識別（粵語）
+// ============================================================
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+let accumulated = '';
+
+if (!SpeechRecognition) {
+  document.getElementById('status').textContent =
+    '⚠️ 你嘅瀏覽器唔支援語音識別，請用 Chrome 或 Edge 開呢個檔案。';
+  document.getElementById('startBtn').disabled = true;
+} else {
+  recognition = new SpeechRecognition();
+  recognition.lang = 'zh-HK';        // 粵語
+  recognition.continuous = true;     // 持續監聽
+  recognition.interimResults = true; // 要中間結果，反應快啲
+  recognition.maxAlternatives = 1;
+
+  recognition.onresult = (event) => {
+    let interim = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const transcript = event.results[i][0].transcript;
+      if (event.results[i].isFinal) {
+        accumulated += transcript;
+      } else {
+        interim += transcript;
+      }
+    }
+    const display = accumulated + interim;
+    document.getElementById('liveText').textContent = '🎧 ' + display;
+
+    // 用最近嘅一截文字去匹配，唔好用全文（太慢又唔準）
+    const recent = display.slice(-60);
+    const matchIdx = findNextMatch(recent);
+    if (matchIdx !== -1) {
+      setCurrent(matchIdx);
+    }
+  };
+
+  recognition.onerror = (event) => {
+    document.getElementById('status').textContent = '⚠️ 錯誤：' + event.error;
+  };
+
+  recognition.onend = () => {
+    // 如果仲係追蹤緊，自動重啟（因為 continuous 有時會自己停）
+    if (isTracking) {
+      try { recognition.start(); } catch(e) {}
+    }
+  };
+}
+
+// ============================================================
+// 7. 開始 / 停止 按鈕
+// ============================================================
+let isTracking = false;
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  if (!recognition) return;
+  isTracking = true;
+  accumulated = '';
+  if (currentIdx === -1) setCurrent(0); // 由第一句開始
+  recognition.start();
+  document.getElementById('startBtn').style.display = 'none';
+  document.getElementById('stopBtn').style.display = 'inline-block';
+  document.getElementById('status').textContent = '🎤 追蹤中⋯⋯請開始讀講稿。';
+});
+
+document.getElementById('stopBtn').addEventListener('click', () => {
+  isTracking = false;
+  if (recognition) recognition.stop();
+  document.getElementById('startBtn').style.display = 'inline-block';
+  document.getElementById('stopBtn').style.display = 'none';
+  document.getElementById('status').textContent = '已停止。';
+});
+</script>
+</body>
+</html>
