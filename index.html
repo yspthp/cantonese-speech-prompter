@@ -22,6 +22,7 @@
   }
   #startBtn { background: #e94560; color: #fff; }
   #stopBtn  { background: #555; color: #fff; }
+  #prevBtn  { background: #3a3a5c; color: #ccc; }
   #nextBtn  { background: #2a9d8f; color: #fff; }
   #progress {
     font-size: 14px; color: #a8dadc;
@@ -58,6 +59,7 @@
 <div class="controls">
   <button id="startBtn">🎤 開始追蹤</button>
   <button id="stopBtn" style="display:none;">⏹ 停止</button>
+  <button id="prevBtn">⏮ 上一句</button>
   <button id="nextBtn">⏭ 下一句</button>
   <div id="progress">📍 第 0 / 0 句</div>
   <div id="status">準備就緒</div>
@@ -68,7 +70,7 @@
 <div id="script"></div>
 
 <p class="hint">
-  提示：讀完一句會自動跳去下一句。如果識別唔準，可以㩒「下一句」按鈕或者直接㩒任何一句。
+  提示：讀完一句會自動跳去下一句。如果識別唔準，可以用「上一句」「下一句」按鈕，或者直接㩒任何一句。
 </p>
 
 <script>
@@ -148,7 +150,7 @@ function getEndingChars(text, count) {
   return new Set(ending.split(''));
 }
 
-const ENDING_LENGTH = 8;  // 取每句最後 8 個中文字做結尾特徵
+const ENDING_LENGTH = 8;
 const lineEndings = scriptLines.map(item =>
   item.type === 'line' ? getEndingChars(item.text, ENDING_LENGTH) : new Set()
 );
@@ -157,7 +159,8 @@ const lineEndings = scriptLines.map(item =>
 // 4. 追蹤狀態
 // ============================================================
 let currentIdx = -1;
-let lineCounter = 0;
+let lastJumpTime = 0;
+const COOLDOWN_MS = 800;
 
 function updateProgress() {
   const doneCount = sentenceEls.filter(s => s.idx <= currentIdx).length;
@@ -183,7 +186,6 @@ function setCurrent(idx, manual) {
   }
 }
 
-// 跳去下一句（跳過 title）
 function goToNextLine() {
   let next = currentIdx + 1;
   while (next < scriptLines.length && scriptLines[next].type !== 'line') {
@@ -197,10 +199,21 @@ function goToNextLine() {
   }
 }
 
+function goToPrevLine() {
+  let prev = currentIdx - 1;
+  while (prev >= 0 && scriptLines[prev].type !== 'line') {
+    prev--;
+  }
+  if (prev >= 0) {
+    setCurrent(prev);
+    document.getElementById('status').textContent = '↩️ 上一句';
+  }
+}
+
 // ============================================================
-// 5. 判定當前句係咪讀完（用結尾匹配）
+// 5. 判定當前句係咪讀完
 // ============================================================
-const ENDING_THRESHOLD = 0.55;  // 結尾匹配閾值
+const ENDING_THRESHOLD = 0.55;
 
 function isCurrentLineDone(recognized) {
   if (currentIdx < 0 || currentIdx >= scriptLines.length) return false;
@@ -209,15 +222,13 @@ function isCurrentLineDone(recognized) {
   const endingSet = lineEndings[currentIdx];
   if (endingSet.size === 0) return false;
 
-  // 只看最近 25 個字
   const recent = recognized.slice(-25);
   let hits = 0;
   for (const ch of recent) {
     if (endingSet.has(ch)) hits++;
   }
 
-  const score = hits / endingSet.size;
-  return score >= ENDING_THRESHOLD;
+  return hits / endingSet.size >= ENDING_THRESHOLD;
 }
 
 // ============================================================
@@ -227,8 +238,6 @@ const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecogni
 let recognition = null;
 let accumulated = '';
 let isTracking = false;
-let lastJumpTime = 0;
-const COOLDOWN_MS = 800;  // 跳轉後冷卻時間，避免連續觸發
 
 if (!SpeechRecognition) {
   document.getElementById('status').textContent =
@@ -255,11 +264,9 @@ if (!SpeechRecognition) {
     const display = accumulated + interim;
     document.getElementById('liveText').textContent = '🎧 ' + display;
 
-    // 冷卻期內唔做判定
     const now = Date.now();
     if (now - lastJumpTime < COOLDOWN_MS) return;
 
-    // 判定當前句係咪讀完
     if (isCurrentLineDone(display)) {
       goToNextLine();
       lastJumpTime = now;
@@ -301,6 +308,11 @@ document.getElementById('stopBtn').addEventListener('click', () => {
 
 document.getElementById('nextBtn').addEventListener('click', () => {
   goToNextLine();
+  lastJumpTime = Date.now();
+});
+
+document.getElementById('prevBtn').addEventListener('click', () => {
+  goToPrevLine();
   lastJumpTime = Date.now();
 });
 </script>
