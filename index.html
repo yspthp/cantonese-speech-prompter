@@ -9,6 +9,7 @@
   body {
     font-family: "Microsoft JhengHei", "PingFang HK", sans-serif;
     background: #1a1a2e; color: #eee; padding: 16px;
+    padding-bottom: 90px;  /* 留空間俾底部按鈕 */
   }
   .controls {
     position: sticky; top: 0; background: #16213e;
@@ -22,8 +23,6 @@
   }
   #startBtn { background: #e94560; color: #fff; }
   #stopBtn  { background: #555; color: #fff; }
-  #prevBtn  { background: #3a3a5c; color: #ccc; }
-  #nextBtn  { background: #2a9d8f; color: #fff; }
   #progress {
     font-size: 14px; color: #a8dadc;
     background: #0f3460; padding: 6px 12px; border-radius: 6px;
@@ -52,6 +51,31 @@
     font-weight: bold;
   }
   .hint { font-size: 12px; color: #888; margin-top: 8px; }
+
+  /* 底部固定導航欄 */
+  .nav-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: #16213e;
+    padding: 12px 16px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 12px;
+    z-index: 20;
+    border-top: 2px solid #0f3460;
+  }
+  #prevBtn {
+    background: #3a3a5c; color: #aaa;
+    padding: 12px 18px;
+    font-size: 15px;
+  }
+  #nextBtn {
+    background: #2a9d8f; color: #fff;
+    padding: 14px 28px;
+    font-size: 18px;
+    min-width: 130px;
+  }
 </style>
 </head>
 <body>
@@ -59,8 +83,6 @@
 <div class="controls">
   <button id="startBtn">🎤 開始追蹤</button>
   <button id="stopBtn" style="display:none;">⏹ 停止</button>
-  <button id="prevBtn">⏮ 上一句</button>
-  <button id="nextBtn">⏭ 下一句</button>
   <div id="progress">📍 第 0 / 0 句</div>
   <div id="status">準備就緒</div>
 </div>
@@ -70,8 +92,14 @@
 <div id="script"></div>
 
 <p class="hint">
-  提示：讀完一句會自動跳去下一句。如果識別唔準，可以用「上一句」「下一句」按鈕，或者直接㩒任何一句。
+  提示：讀完一句會自動跳去下一句。如果識別唔準，可以用底部嘅「上一句」「下一句」按鈕，或者直接㩒任何一句。
 </p>
+
+<!-- 底部固定導航 -->
+<div class="nav-bar">
+  <button id="prevBtn">⏮ 上一句</button>
+  <button id="nextBtn">⏭ 下一句</button>
+</div>
 
 <script>
 // ============================================================
