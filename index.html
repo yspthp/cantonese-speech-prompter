@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>演講提示卡 - 快速追蹤版</title>
+<title>演講提示卡 - 順序追蹤版</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -22,7 +22,12 @@
   }
   #startBtn { background: #e94560; color: #fff; }
   #stopBtn  { background: #555; color: #fff; }
-  #status { font-size: 14px; color: #a8dadc; flex: 1; min-width: 180px; }
+  #nextBtn  { background: #2a9d8f; color: #fff; }
+  #progress {
+    font-size: 14px; color: #a8dadc;
+    background: #0f3460; padding: 6px 12px; border-radius: 6px;
+  }
+  #status { font-size: 14px; color: #a8dadc; flex: 1; min-width: 150px; }
   #liveText {
     background: #0f3460; padding: 10px; border-radius: 8px;
     font-size: 14px; color: #ffd460; min-height: 40px;
@@ -53,7 +58,9 @@
 <div class="controls">
   <button id="startBtn">🎤 開始追蹤</button>
   <button id="stopBtn" style="display:none;">⏹ 停止</button>
-  <div id="status">準備就緒，撳「開始追蹤」並允許使用咪高峯。</div>
+  <button id="nextBtn">⏭ 下一句</button>
+  <div id="progress">📍 第 0 / 0 句</div>
+  <div id="status">準備就緒</div>
 </div>
 
 <div id="liveText">（呢度會顯示識別到嘅聲音）</div>
@@ -61,8 +68,7 @@
 <div id="script"></div>
 
 <p class="hint">
-  提示：如果追蹤唔準，可以直接㩒任何一句手動跳過去。
-  建議用 Chrome 或 Edge，並喺安靜環境使用。
+  提示：讀完一句會自動跳去下一句。如果識別唔準，可以㩒「下一句」按鈕或者直接㩒任何一句。
 </p>
 
 <script>
@@ -115,6 +121,7 @@ const scriptLines = [
 // ============================================================
 const scriptDiv = document.getElementById('script');
 const sentenceEls = [];
+let totalLines = 0;
 
 scriptLines.forEach((item, idx) => {
   const div = document.createElement('div');
@@ -126,43 +133,37 @@ scriptLines.forEach((item, idx) => {
     div.dataset.idx = idx;
     div.addEventListener('click', () => setCurrent(idx, true));
     sentenceEls.push({idx, el: div});
+    totalLines++;
   }
   scriptDiv.appendChild(div);
 });
 
 // ============================================================
-// 3. 預計算每句嘅關鍵詞（只用中文字，唔用二元組，更快）
+// 3. 預計算每句嘅「結尾關鍵詞」
 // ============================================================
-function extractChars(text) {
-  const chars = new Set();
-  for (const ch of text) {
-    if (/[\u4e00-\u9fff]/.test(ch)) {
-      chars.add(ch);
-    }
-  }
-  return chars;
+function getEndingChars(text, count) {
+  const chars = text.replace(/[^\u4e00-\u9fff]/g, '');
+  const takeCount = Math.min(count, chars.length);
+  const ending = chars.slice(-takeCount);
+  return new Set(ending.split(''));
 }
 
-const lineCharSets = scriptLines.map(item =>
-  item.type === 'line' ? extractChars(item.text) : new Set()
+const ENDING_LENGTH = 8;  // 取每句最後 8 個中文字做結尾特徵
+const lineEndings = scriptLines.map(item =>
+  item.type === 'line' ? getEndingChars(item.text, ENDING_LENGTH) : new Set()
 );
 
 // ============================================================
-// 4. 快速匹配：識別文字入面有幾多個字屬於目標句
-// ============================================================
-function matchScore(recognized, targetSet) {
-  if (targetSet.size === 0) return 0;
-  let hits = 0;
-  for (const ch of recognized) {
-    if (targetSet.has(ch)) hits++;
-  }
-  return hits / targetSet.size;
-}
-
-// ============================================================
-// 5. 追蹤狀態
+// 4. 追蹤狀態
 // ============================================================
 let currentIdx = -1;
+let lineCounter = 0;
+
+function updateProgress() {
+  const doneCount = sentenceEls.filter(s => s.idx <= currentIdx).length;
+  document.getElementById('progress').textContent =
+    `📍 第 ${doneCount} / ${totalLines} 句`;
+}
 
 function setCurrent(idx, manual) {
   if (idx < 0 || idx >= scriptLines.length) return;
@@ -176,38 +177,58 @@ function setCurrent(idx, manual) {
   sentenceEls.forEach(({idx: i, el}) => {
     el.classList.toggle('done', i < idx);
   });
+  updateProgress();
   if (manual) {
     document.getElementById('status').textContent = '✋ 手動跳轉';
   }
 }
 
-// ============================================================
-// 6. 核心匹配邏輯：只搜接下來 4 句（覆蓋跳讀 1-2 句）
-// ============================================================
-const SEARCH_AHEAD = 4;      // 向後搜幾句
-const THRESHOLD = 0.22;      // 觸發閾值（低啲 = 快啲觸發）
-
-function tryMatch(recognized) {
-  const start = currentIdx + 1;
-  const end = Math.min(currentIdx + SEARCH_AHEAD + 1, scriptLines.length);
-
-  for (let i = start; i < end; i++) {
-    if (scriptLines[i].type !== 'line') continue;
-    const score = matchScore(recognized, lineCharSets[i]);
-    if (score >= THRESHOLD) {
-      return i;
-    }
+// 跳去下一句（跳過 title）
+function goToNextLine() {
+  let next = currentIdx + 1;
+  while (next < scriptLines.length && scriptLines[next].type !== 'line') {
+    next++;
   }
-  return -1;
+  if (next < scriptLines.length) {
+    setCurrent(next);
+    document.getElementById('status').textContent = '✅ 下一句';
+  } else {
+    document.getElementById('status').textContent = '🎉 讀完晒！';
+  }
 }
 
 // ============================================================
-// 7. 語音識別
+// 5. 判定當前句係咪讀完（用結尾匹配）
+// ============================================================
+const ENDING_THRESHOLD = 0.55;  // 結尾匹配閾值
+
+function isCurrentLineDone(recognized) {
+  if (currentIdx < 0 || currentIdx >= scriptLines.length) return false;
+  if (scriptLines[currentIdx].type !== 'line') return false;
+
+  const endingSet = lineEndings[currentIdx];
+  if (endingSet.size === 0) return false;
+
+  // 只看最近 25 個字
+  const recent = recognized.slice(-25);
+  let hits = 0;
+  for (const ch of recent) {
+    if (endingSet.has(ch)) hits++;
+  }
+
+  const score = hits / endingSet.size;
+  return score >= ENDING_THRESHOLD;
+}
+
+// ============================================================
+// 6. 語音識別
 // ============================================================
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;
 let accumulated = '';
 let isTracking = false;
+let lastJumpTime = 0;
+const COOLDOWN_MS = 800;  // 跳轉後冷卻時間，避免連續觸發
 
 if (!SpeechRecognition) {
   document.getElementById('status').textContent =
@@ -234,13 +255,14 @@ if (!SpeechRecognition) {
     const display = accumulated + interim;
     document.getElementById('liveText').textContent = '🎧 ' + display;
 
-    // 只取最近 30 個字做匹配（由 40 改做 30，更靈敏）
-    const recent = display.slice(-30);
+    // 冷卻期內唔做判定
+    const now = Date.now();
+    if (now - lastJumpTime < COOLDOWN_MS) return;
 
-    const matchIdx = tryMatch(recent);
-    if (matchIdx !== -1 && matchIdx > currentIdx) {
-      setCurrent(matchIdx);
-      document.getElementById('status').textContent = '✅ 追蹤中';
+    // 判定當前句係咪讀完
+    if (isCurrentLineDone(display)) {
+      goToNextLine();
+      lastJumpTime = now;
     }
   };
 
@@ -256,7 +278,7 @@ if (!SpeechRecognition) {
 }
 
 // ============================================================
-// 8. 開始 / 停止
+// 7. 按鈕
 // ============================================================
 document.getElementById('startBtn').addEventListener('click', () => {
   if (!recognition) return;
@@ -275,6 +297,11 @@ document.getElementById('stopBtn').addEventListener('click', () => {
   document.getElementById('startBtn').style.display = 'inline-block';
   document.getElementById('stopBtn').style.display = 'none';
   document.getElementById('status').textContent = '已停止。';
+});
+
+document.getElementById('nextBtn').addEventListener('click', () => {
+  goToNextLine();
+  lastJumpTime = Date.now();
 });
 </script>
 </body>
